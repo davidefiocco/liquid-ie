@@ -6,7 +6,7 @@ multi-component liquids.
 ## Installation
 
 ```bash
-pip install -e ".[dev,plot]"
+uv sync --extra dev --extra plot
 ```
 
 ## Quick start
@@ -113,7 +113,7 @@ Phys. Rev. E 55, 657 (1997), enabling the study of glass transition dynamics.
 ## Development
 
 ```bash
-pip install -e ".[dev]"
-pytest
-ruff check src/ tests/
+uv sync --extra dev
+uv run pytest
+uv run ruff check src/ tests/
 ```
