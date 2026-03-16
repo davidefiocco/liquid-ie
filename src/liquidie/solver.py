@@ -117,7 +117,7 @@ def solve(
     rho_vec = np.array(config.system.density)
     rho = np.diag(rho_vec)
 
-    closure_fn = build_closure(config.solver.closure)
+    closure_fn = build_closure(config.solver.closure, config.solver.closure_params)
     potential_fn = build_potential(config.potential.expression)
 
     # --- Grid and potential ---

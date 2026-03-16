@@ -3,7 +3,7 @@
 import numpy as np
 import numpy.testing as npt
 
-from liquidie.linalg import dotve, invv
+from liquidie.linalg import dotve, dotvbs, invv
 
 
 class TestInvv:
@@ -46,3 +46,30 @@ class TestDotve:
         result = dotve(a, b)
         for i in range(8):
             npt.assert_allclose(result[i], a[i] @ b[i], atol=1e-12)
+
+
+class TestDotvbs:
+    def test_diagonal_scaling(self):
+        """Multiplying by a diagonal matrix scales columns."""
+        b = np.ones((3, 2, 2))
+        s = np.array([[2.0, 0.0], [0.0, 3.0]])
+        result = dotvbs(b, s)
+        for q in range(3):
+            npt.assert_allclose(result[q], b[q] @ s, atol=1e-15)
+
+    def test_matches_manual(self):
+        """dotvbs(b, s) matches b[q] @ s for random inputs."""
+        rng = np.random.default_rng(77)
+        b = rng.standard_normal((10, 3, 3))
+        s = rng.standard_normal((3, 3))
+        result = dotvbs(b, s)
+        for q in range(10):
+            npt.assert_allclose(result[q], b[q] @ s, atol=1e-12)
+
+    def test_identity(self):
+        """Multiplying by identity leaves b unchanged."""
+        rng = np.random.default_rng(55)
+        b = rng.standard_normal((5, 2, 2))
+        s = np.eye(2)
+        result = dotvbs(b, s)
+        npt.assert_allclose(result, b, atol=1e-15)

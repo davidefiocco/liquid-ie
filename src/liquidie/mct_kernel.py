@@ -1,7 +1,7 @@
 """Numba-accelerated MCT memory-kernel matrix element computation.
 
 Implements the mode-coupling theory kernel M(q) following
-Götze & Sjögren, Phys. Rev. E 55, 657 (1997).
+Nauroth & Kob, Phys. Rev. E 55, 657 (1997).
 """
 
 from __future__ import annotations

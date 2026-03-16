@@ -2,7 +2,7 @@
 
 Computes the non-ergodicity parameter F(q) from the static structure
 factor S(q) and direct correlation function c(q) produced by the OZ
-solver, following the MCT equations in Phys. Rev. E 55, 657 (1997).
+solver, following the MCT equations in Nauroth & Kob, Phys. Rev. E 55, 657 (1997).
 """
 
 from __future__ import annotations

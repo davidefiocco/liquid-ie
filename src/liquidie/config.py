@@ -59,6 +59,7 @@ class SolverConfig(BaseModel):
     """OZ solver settings."""
 
     closure: str = "PY"
+    closure_params: dict[str, float] = {}
     tolerance: float = 1e-8
 
 

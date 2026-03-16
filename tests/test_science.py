@@ -104,6 +104,265 @@ class TestPYHardSphere:
         )
 
 
+class TestMSHardSphere:
+    """Validate Martynov-Sarkisov closure for hard spheres.
+
+    MS should produce more accurate contact values than HNC at high
+    packing fractions while sharing the same qualitative behaviour.
+    The analytical PY contact value (1 + eta/2) / (1 - eta)^2 serves
+    as a reference; MS is known to lie between PY and HNC.
+
+    References
+    ----------
+    - Martynov & Sarkisov, Mol. Phys. 49, 1495 (1983)
+    - Ballone et al., Mol. Phys. 59, 275 (1986)
+    """
+
+    @pytest.fixture(scope="class")
+    def ms_result(self):
+        rho = 6 * 0.3 / math.pi
+        config = Config(
+            system={"temperature": 1.0, "density": [rho]},
+            grid={"dr": 0.005, "r_max": 20.0},
+            potential={
+                "expression": "hard_sphere",
+                "epsilon": [1.0],
+                "sigma": [1.0],
+            },
+            solver={"closure": "MS", "tolerance": 1e-10},
+        )
+        return solve(config)
+
+    @pytest.fixture(scope="class")
+    def bpgg_s2_result(self):
+        """BPGG with s=2 should give bitwise identical results to MS."""
+        rho = 6 * 0.3 / math.pi
+        config = Config(
+            system={"temperature": 1.0, "density": [rho]},
+            grid={"dr": 0.005, "r_max": 20.0},
+            potential={
+                "expression": "hard_sphere",
+                "epsilon": [1.0],
+                "sigma": [1.0],
+            },
+            solver={
+                "closure": "BPGG",
+                "closure_params": {"s": 2.0},
+                "tolerance": 1e-10,
+            },
+        )
+        return solve(config)
+
+    def test_core_exclusion(self, ms_result):
+        """g(r) ~ 0 inside the hard core."""
+        r, rdf = ms_result.r, ms_result.rdf[:, 0, 0]
+        core_mask = (r > 0.1) & (r < 0.9)
+        np.testing.assert_array_less(
+            np.abs(rdf[core_mask]),
+            0.05,
+            err_msg="MS: |g(r)| should be < 0.05 inside core",
+        )
+
+    def test_contact_value(self, ms_result):
+        """MS contact value should be within 5% of PY analytical."""
+        eta = 0.3
+        rdf = ms_result.rdf[:, 0, 0]
+        peak = np.max(rdf)
+        analytical_py = (1 + eta / 2) / (1 - eta) ** 2
+        np.testing.assert_allclose(peak, analytical_py, rtol=0.05)
+
+    def test_structure_factor_positive(self, ms_result):
+        """S(k) >= 0 for all k (thermodynamic stability)."""
+        sk = ms_result.s_k[1:, 0, 0]
+        np.testing.assert_array_less(-0.01, sk, err_msg="S(k) should be non-negative")
+
+    def test_rdf_approaches_unity(self, ms_result):
+        """g(r) -> 1 at large r."""
+        r, rdf = ms_result.r, ms_result.rdf[:, 0, 0]
+        mean_dev = np.mean(np.abs(rdf[r > 8.0] - 1.0))
+        assert mean_dev < 0.02, f"|g(r)-1| mean = {mean_dev:.4f}, expected < 0.02"
+
+    def test_bpgg_s2_matches_ms(self, ms_result, bpgg_s2_result):
+        """BPGG(s=2) produces bitwise identical g(r) to MS preset."""
+        np.testing.assert_array_equal(
+            ms_result.rdf,
+            bpgg_s2_result.rdf,
+            err_msg="BPGG(s=2) should match MS exactly",
+        )
+
+
+class TestBPGGHardSphere:
+    """Validate the BPGG closure family at intermediate s values.
+
+    BPGG(s) interpolates between HNC (s=1) and MS (s=2).  The boundary
+    cases are covered by TestMSHardSphere.test_bpgg_s2_matches_ms and
+    test_expressions.py.  This class exercises the *interior* of the
+    family: s=1 full-solve equivalence with HNC, intermediate s=1.5,
+    and monotonicity of the contact value across the s parameter.
+
+    State point: hard spheres, eta = 0.3, PY analytical contact value
+    g(sigma+) = (1 + eta/2) / (1 - eta)^2 ~ 2.3469.
+
+    References
+    ----------
+    - Ballone, Pastore, Galli, Gazzillo, Mol. Phys. 59, 275 (1986)
+    """
+
+    ETA = 0.3
+    RHO = 6 * 0.3 / math.pi
+    GRID = {"dr": 0.005, "r_max": 20.0}
+    TOL = 1e-10
+
+    @staticmethod
+    def _solve_bpgg(rho, grid, s, tol):
+        config = Config(
+            system={"temperature": 1.0, "density": [rho]},
+            grid=grid,
+            potential={
+                "expression": "hard_sphere",
+                "epsilon": [1.0],
+                "sigma": [1.0],
+            },
+            solver={
+                "closure": "BPGG",
+                "closure_params": {"s": s},
+                "tolerance": tol,
+            },
+        )
+        return solve(config)
+
+    @pytest.fixture(scope="class")
+    def hnc_result(self):
+        config = Config(
+            system={"temperature": 1.0, "density": [self.RHO]},
+            grid=self.GRID,
+            potential={
+                "expression": "hard_sphere",
+                "epsilon": [1.0],
+                "sigma": [1.0],
+            },
+            solver={"closure": "HNC", "tolerance": self.TOL},
+        )
+        return solve(config)
+
+    @pytest.fixture(scope="class")
+    def ms_result(self):
+        config = Config(
+            system={"temperature": 1.0, "density": [self.RHO]},
+            grid=self.GRID,
+            potential={
+                "expression": "hard_sphere",
+                "epsilon": [1.0],
+                "sigma": [1.0],
+            },
+            solver={"closure": "MS", "tolerance": self.TOL},
+        )
+        return solve(config)
+
+    @pytest.fixture(scope="class")
+    def bpgg_s1_result(self):
+        return self._solve_bpgg(self.RHO, self.GRID, s=1.0, tol=self.TOL)
+
+    @pytest.fixture(scope="class")
+    def bpgg_s1p5_result(self):
+        return self._solve_bpgg(self.RHO, self.GRID, s=1.5, tol=self.TOL)
+
+    # -- BPGG(s=1) == HNC full solve --
+
+    def test_bpgg_s1_matches_hnc_rdf(self, hnc_result, bpgg_s1_result):
+        """Full OZ solve: BPGG(s=1) g(r) matches HNC within solver tolerance.
+
+        Not bitwise identical because SymPy evaluates (1+x)^1 - 1 via a
+        different FP operation sequence than plain x, but the converged
+        solutions agree to the solver tolerance.
+        """
+        np.testing.assert_allclose(
+            bpgg_s1_result.rdf,
+            hnc_result.rdf,
+            atol=1e-9,
+            err_msg="BPGG(s=1) should match HNC to solver tolerance",
+        )
+
+    def test_bpgg_s1_matches_hnc_sk(self, hnc_result, bpgg_s1_result):
+        """Full OZ solve: BPGG(s=1) S(k) matches HNC within solver tolerance."""
+        np.testing.assert_allclose(
+            bpgg_s1_result.s_k,
+            hnc_result.s_k,
+            atol=1e-9,
+            err_msg="BPGG(s=1) S(k) should match HNC to solver tolerance",
+        )
+
+    # -- BPGG(s=1.5) physics sanity --
+
+    def test_bpgg_s1p5_core_exclusion(self, bpgg_s1p5_result):
+        """g(r) ~ 0 inside the hard core for intermediate s."""
+        r, rdf = bpgg_s1p5_result.r, bpgg_s1p5_result.rdf[:, 0, 0]
+        core_mask = (r > 0.1) & (r < 0.9)
+        np.testing.assert_array_less(
+            np.abs(rdf[core_mask]),
+            0.05,
+            err_msg="BPGG(s=1.5): |g(r)| should be < 0.05 inside core",
+        )
+
+    def test_bpgg_s1p5_contact_between_hnc_and_ms(
+        self, hnc_result, ms_result, bpgg_s1p5_result
+    ):
+        """BPGG(s=1.5) contact value lies strictly between HNC (s=1) and MS (s=2)."""
+        peak_hnc = np.max(hnc_result.rdf[:, 0, 0])
+        peak_ms = np.max(ms_result.rdf[:, 0, 0])
+        peak_1p5 = np.max(bpgg_s1p5_result.rdf[:, 0, 0])
+        lo, hi = sorted([peak_hnc, peak_ms])
+        assert lo < peak_1p5 < hi, (
+            f"BPGG(s=1.5) peak {peak_1p5:.6f} should be between "
+            f"HNC {peak_hnc:.6f} and MS {peak_ms:.6f}"
+        )
+
+    def test_bpgg_s1p5_contact_physically_reasonable(self, bpgg_s1p5_result):
+        """BPGG(s=1.5) contact value is in a physically reasonable range.
+
+        HNC overestimates the HS contact value, so BPGG(s=1.5)
+        (closer to HNC than MS) is expected to overshoot the PY
+        analytical value.  We just check it's in a sane range.
+        """
+        peak = np.max(bpgg_s1p5_result.rdf[:, 0, 0])
+        assert 2.0 < peak < 3.5, (
+            f"BPGG(s=1.5) contact value {peak:.4f} outside reasonable range [2.0, 3.5]"
+        )
+
+    def test_bpgg_s1p5_structure_factor_positive(self, bpgg_s1p5_result):
+        """S(k) >= 0 for all k (thermodynamic stability)."""
+        sk = bpgg_s1p5_result.s_k[1:, 0, 0]
+        np.testing.assert_array_less(
+            -0.01, sk, err_msg="BPGG(s=1.5): S(k) should be non-negative"
+        )
+
+    def test_bpgg_s1p5_rdf_approaches_unity(self, bpgg_s1p5_result):
+        """g(r) -> 1 at large r."""
+        r, rdf = bpgg_s1p5_result.r, bpgg_s1p5_result.rdf[:, 0, 0]
+        mean_dev = np.mean(np.abs(rdf[r > 8.0] - 1.0))
+        assert mean_dev < 0.02, f"|g(r)-1| mean = {mean_dev:.4f}, expected < 0.02"
+
+    # -- Monotonicity across s --
+
+    def test_contact_monotonicity(self, hnc_result, bpgg_s1p5_result, ms_result):
+        """Contact value varies monotonically from s=1 (HNC) through s=1.5 to s=2 (MS).
+
+        For hard spheres at eta=0.3, HNC overestimates the contact value
+        relative to MS, so the sequence should be strictly decreasing or
+        strictly increasing -- no reversal.
+        """
+        peaks = [
+            np.max(hnc_result.rdf[:, 0, 0]),
+            np.max(bpgg_s1p5_result.rdf[:, 0, 0]),
+            np.max(ms_result.rdf[:, 0, 0]),
+        ]
+        diffs = [peaks[1] - peaks[0], peaks[2] - peaks[1]]
+        assert (diffs[0] > 0 and diffs[1] > 0) or (diffs[0] < 0 and diffs[1] < 0), (
+            f"Contact values should be monotonic in s: "
+            f"s=1 -> {peaks[0]:.6f}, s=1.5 -> {peaks[1]:.6f}, s=2 -> {peaks[2]:.6f}"
+        )
+
+
 class TestHNCLennardJones:
     """Validate HNC closure for the Lennard-Jones fluid at Verlet's state II.
 
@@ -311,7 +570,6 @@ class TestPYSquareWell:
     References
     ----------
     - Henderson & Grundke, J. Chem. Phys. 63, 601 (1975)
-    - Largo & Solana, Phys. Rev. E 67, 066112 (2003)
     """
 
     @pytest.fixture(scope="class")
@@ -486,20 +744,22 @@ class TestMCTHardSphere:
         result, f = glass
         sk = result.s_k[:, 0, 0]
         fq = f[:, 0, 0]
-        violations = fq > sk + 0.1
+        violations = fq > sk + 0.01
         assert not np.any(violations), (
-            f"F(q) exceeds S(q) at {np.sum(violations)} q-points"
+            f"F(q) exceeds S(q)+0.01 at {np.sum(violations)} q-points; "
+            f"max overshoot = {np.max(fq - sk):.4e}"
         )
 
     def test_glass_f_peaks_near_s_peak(self, glass):
         """F(q) peak should be near the S(k) first peak (k ~ 6-8)."""
         result, f = glass
         k = result.k
+        dk = k[1] - k[0]
         mask = k > 2.0
         f_peak_k = k[mask][np.argmax(f[mask, 0, 0])]
         s_peak_k = k[mask][np.argmax(result.s_k[mask, 0, 0])]
-        assert abs(f_peak_k - s_peak_k) < 2.0, (
-            f"F peak at k={f_peak_k:.2f}, S peak at k={s_peak_k:.2f}"
+        assert abs(f_peak_k - s_peak_k) < 1.0, (
+            f"F peak at k={f_peak_k:.2f}, S peak at k={s_peak_k:.2f}, dk={dk:.3f}"
         )
 
 
@@ -591,23 +851,22 @@ class TestOZConsistency:
         np.testing.assert_allclose(hk, hk_oz, atol=1e-13)
 
     def test_binary_sk_formula(self, binary):
-        """S_ij(k) = x_i*delta_ij + x_i*x_j*rho_total*h_ij(k)."""
+        """S_ij(k) = x_i*delta_ij + x_i*x_j*rho_total*h_ij(k) at all k."""
         result, rho_vec = binary
         rho_total = rho_vec.sum()
         x = rho_vec / rho_total
-        for qi in [10, 50, 100, 200]:
-            for i in range(2):
-                for j in range(2):
-                    expected = (
-                        x[i] * (1.0 if i == j else 0.0)
-                        + x[i] * x[j] * rho_total * result.h_k[qi, i, j]
-                    )
-                    np.testing.assert_allclose(
-                        result.s_k[qi, i, j],
-                        expected,
-                        atol=1e-14,
-                        err_msg=f"S_{i}{j}(k[{qi}]) mismatch",
-                    )
+        for i in range(2):
+            for j in range(2):
+                expected = (
+                    x[i] * (1.0 if i == j else 0.0)
+                    + x[i] * x[j] * rho_total * result.h_k[:, i, j]
+                )
+                np.testing.assert_allclose(
+                    result.s_k[:, i, j],
+                    expected,
+                    atol=1e-14,
+                    err_msg=f"S_{i}{j}(k) mismatch",
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -1110,6 +1369,122 @@ class TestMCTNewtonKrylov:
             f_picard[:, 0, 0],
             atol=0.01,
             err_msg="NK and Picard should agree in ergodic phase",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Testbed 10b – MCT mass invariance
+# ---------------------------------------------------------------------------
+
+
+class TestMCTMasses:
+    """Verify that the MCT non-ergodicity parameter F(q) is mass-independent.
+
+    In MCT the memory kernel M_{ij}(q) acquires a factor 1/m_i (mct_kernel.py)
+    while the fluctuating-force matrix N_{ij} = m_i/(T x_i) M_{ij} (mct.py)
+    multiplies it back in.  The masses cancel exactly, so F(q) is purely
+    structural.  Any indexing mismatch between get_m and compute_f would
+    break this cancellation.
+    """
+
+    @staticmethod
+    def _solve_hs(eta, dr=0.05, r_max=10.0):
+        rho = 6 * eta / math.pi
+        config = Config(
+            system={"temperature": 1.0, "density": [rho]},
+            grid={"dr": dr, "r_max": r_max},
+            potential={
+                "expression": "hard_sphere",
+                "epsilon": [1.0],
+                "sigma": [1.0],
+            },
+            solver={"closure": "PY", "tolerance": 1e-8},
+        )
+        return solve(config), config
+
+    @pytest.fixture(scope="class")
+    def ergodic_pair(self):
+        """F(q) at eta=0.40 with unit and non-unit masses."""
+        result, config = self._solve_hs(0.40)
+        f_unit = run_mct(config, result, method="picard", n_iterations=15)
+        f_heavy = run_mct(
+            config,
+            result,
+            method="picard",
+            n_iterations=15,
+            masses=np.array([5.0]),
+        )
+        return f_unit, f_heavy
+
+    @pytest.fixture(scope="class")
+    def glass_pair(self):
+        """F(q) at eta=0.53 with unit and non-unit masses."""
+        result, config = self._solve_hs(0.53)
+        f_unit = run_mct(config, result, method="picard", n_iterations=15)
+        f_heavy = run_mct(
+            config,
+            result,
+            method="picard",
+            n_iterations=15,
+            masses=np.array([3.0]),
+        )
+        return f_unit, f_heavy
+
+    @pytest.fixture(scope="class")
+    def binary_pair(self):
+        """Binary HS F(q) with unit and asymmetric masses."""
+        rho_total = 0.3 * 12 / (math.pi * (1.0 + 0.6**3))
+        rho_1 = rho_2 = rho_total / 2
+        config = Config(
+            system={"temperature": 1.0, "density": [rho_1, rho_2]},
+            grid={"dr": 0.05, "r_max": 10.0},
+            potential={
+                "expression": "hard_sphere",
+                "epsilon": [1.0, 1.0, 1.0, 1.0],
+                "sigma": [1.0, 0.8, 0.8, 0.6],
+            },
+            solver={"closure": "PY", "tolerance": 1e-8},
+        )
+        result = solve(config)
+        f_unit = run_mct(config, result, method="picard", n_iterations=15)
+        f_asym = run_mct(
+            config,
+            result,
+            method="picard",
+            n_iterations=15,
+            masses=np.array([2.0, 0.5]),
+        )
+        return f_unit, f_asym
+
+    def test_ergodic_mass_invariance(self, ergodic_pair):
+        """Ergodic F(q) is identical regardless of mass."""
+        f_unit, f_heavy = ergodic_pair
+        np.testing.assert_allclose(
+            f_heavy,
+            f_unit,
+            atol=1e-12,
+            err_msg="Ergodic F(q) should be mass-independent",
+        )
+
+    def test_glass_mass_invariance(self, glass_pair):
+        """Glass F(q) is identical regardless of mass."""
+        f_unit, f_heavy = glass_pair
+        np.testing.assert_allclose(
+            f_heavy,
+            f_unit,
+            atol=1e-12,
+            err_msg="Glass F(q) should be mass-independent",
+        )
+
+    @pytest.mark.slow
+    def test_binary_mass_invariance(self, binary_pair):
+        """Binary F(q) is identical with asymmetric masses."""
+        f_unit, f_asym = binary_pair
+        np.testing.assert_allclose(
+            f_asym,
+            f_unit,
+            atol=1e-12,
+            err_msg="Binary F(q) should be mass-independent",
         )
 
 

@@ -33,6 +33,18 @@ Closures are specified as SymPy expressions over the variables `r`, `gamma_r`,
 |----------|-----------|
 | `PY`     | `(r + gamma_r) * (exp(-inv_t * phi) - 1)` |
 | `HNC`    | `r * exp(-inv_t * phi + gamma_r / r) - gamma_r - r` |
+| `MS`     | `r * exp(-inv_t * phi + sqrt(1 + 2*gamma_r/r) - 1) - gamma_r - r` |
+| `BPGG`   | `r * exp(-inv_t * phi + (1 + s*gamma_r/r)**(1/s) - 1) - gamma_r - r` |
+
+`BPGG` is a one-parameter family (Ballone-Pastore-Galli-Gazzillo) that
+interpolates between HNC (*s* = 1) and MS (*s* = 2). The parameter *s* is
+set via `closure_params`:
+
+```toml
+[solver]
+closure = "BPGG"
+closure_params = { s = 1.5 }
+```
 
 You can also write any valid SymPy expression directly:
 

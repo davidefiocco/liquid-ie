@@ -29,6 +29,8 @@ logger = logging.getLogger("liquidie")
 KNOWN_CLOSURES: dict[str, str] = {
     "PY": "(r + gamma_r) * (exp(-inv_t * phi) - 1)",
     "HNC": "r * exp(-inv_t * phi + gamma_r / r) - gamma_r - r",
+    "MS": "r * exp(-inv_t * phi + sqrt(1 + 2*gamma_r/r) - 1) - gamma_r - r",
+    "BPGG": "r * exp(-inv_t * phi + (1 + s*gamma_r/r)**(1/s) - 1) - gamma_r - r",
 }
 
 HARD_CORE_HEIGHT = 1e30
@@ -50,6 +52,7 @@ def build_expression(
     spec: str,
     registry: dict[str, str],
     allowed_symbols: set[str],
+    params: dict[str, float] | None = None,
 ) -> Callable[..., Any]:
     """Parse *spec* into a NumPy-vectorised callable.
 
@@ -62,26 +65,36 @@ def build_expression(
     allowed_symbols
         Set of permitted free-symbol names.  Any other symbol in the
         parsed expression raises ``ValueError``.
+    params
+        Optional mapping of parameter names to scalar values.  These
+        symbols are substituted into the expression at build time so
+        the returned callable has the same signature as when *params*
+        is empty.
 
     Returns
     -------
     A callable whose positional arguments correspond to *allowed_symbols*
     in sorted order, accepting and returning NumPy arrays.
     """
+    params = params or {}
     expr_str = registry.get(spec, spec)
 
-    sym_locals = {name: sympy.Symbol(name) for name in allowed_symbols}
+    all_names = allowed_symbols | set(params)
+    sym_locals = {name: sympy.Symbol(name) for name in all_names}
     try:
         expr = sympy.sympify(expr_str, locals=sym_locals)
     except (sympy.SympifyError, SyntaxError) as exc:
         raise ValueError(f"Cannot parse expression: {expr_str!r}") from exc
+
+    if params:
+        expr = expr.subs({sym_locals[k]: v for k, v in params.items()})
 
     free = {str(s) for s in expr.free_symbols}
     unexpected = free - allowed_symbols
     if unexpected:
         raise ValueError(
             f"Expression contains unknown symbol(s) {unexpected}. "
-            f"Allowed: {allowed_symbols}"
+            f"Allowed: {allowed_symbols} (set unresolved params via closure_params)"
         )
 
     ordered_syms = sorted(allowed_symbols)
@@ -95,13 +108,17 @@ def build_expression(
 # ---------------------------------------------------------------------------
 
 
-def build_closure(spec: str) -> Callable[..., Any]:
+def build_closure(
+    spec: str,
+    params: dict[str, float] | None = None,
+) -> Callable[..., Any]:
     """Build a closure callable from a preset name or SymPy expression.
 
     The returned function has signature ``f(gamma_r, inv_t, phi, r)``
-    (arguments in sorted alphabetical order).
+    (arguments in sorted alphabetical order).  Extra *params* are
+    substituted at build time.
     """
-    return build_expression(spec, KNOWN_CLOSURES, CLOSURE_SYMBOLS)
+    return build_expression(spec, KNOWN_CLOSURES, CLOSURE_SYMBOLS, params)
 
 
 def build_potential(spec: str) -> Callable[..., Any]:

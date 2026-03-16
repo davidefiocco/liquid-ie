@@ -54,18 +54,6 @@ def dotve(
     return np.einsum("qij,qjk->qik", a, b)
 
 
-def dotvsb(
-    s: NDArray[np.floating],
-    b: NDArray[np.floating],
-) -> NDArray[np.floating]:
-    """Batch product of a diagonal (scalar-per-species) matrix with a full matrix.
-
-    *s* has shape ``(n, n)`` (species-indexed diagonal), *b* has shape
-    ``(N, n, n)``.  Computes ``s @ b[q]`` for each grid point *q*.
-    """
-    return np.einsum("ij,qjk->qik", s, b)
-
-
 def dotvbs(
     b: NDArray[np.floating],
     s: NDArray[np.floating],

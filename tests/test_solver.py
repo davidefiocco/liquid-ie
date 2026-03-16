@@ -35,8 +35,10 @@ class TestSolver:
         result = solve(hs_1species_config)
         core_mask = (result.r > 0.1) & (result.r < 0.9)
         core_rdf = result.rdf[core_mask, 0, 0]
-        assert np.all(np.abs(core_rdf) < 0.1), (
-            f"RDF inside core should be near zero, got max={np.max(np.abs(core_rdf))}"
+        np.testing.assert_array_less(
+            np.abs(core_rdf),
+            0.05,
+            err_msg=f"RDF inside core should be < 0.05, got max={np.max(np.abs(core_rdf))}",
         )
 
     def test_rdf_peak_near_contact(self, hs_1species_config):
