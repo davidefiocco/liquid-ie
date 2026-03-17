@@ -105,9 +105,20 @@ class Config(BaseModel):
             )
         return self
 
+    @classmethod
+    def from_toml(cls, path: str | Path) -> "Config":
+        """Load and validate a TOML configuration file.
+
+        Parameters
+        ----------
+        path
+            Filesystem path to a ``.toml`` file.
+        """
+        with open(Path(path), "rb") as f:
+            raw = tomllib.load(f)
+        return cls(**raw)
+
 
 def load_config(path: Path) -> Config:
     """Read a TOML file and return a validated Config."""
-    with open(path, "rb") as f:
-        raw = tomllib.load(f)
-    return Config(**raw)
+    return Config.from_toml(path)

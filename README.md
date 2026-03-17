@@ -11,6 +11,31 @@ uv sync --extra dev --extra plot
 
 ## Quick start
 
+### As a Python library
+
+```python
+from liquidie import Config, solve, run_mct, list_potentials, list_closures
+
+# Discover available presets
+list_potentials()  # ['hard_sphere', 'lennard_jones']
+list_closures()    # ['PY', 'HNC', 'MS', 'BPGG']
+
+# Load config from TOML or build from dicts
+config = Config.from_toml("examples/hard_sphere_1species.toml")
+
+# Solve the OZ equation
+result = solve(config)
+
+# For single-component systems, squeeze to 1-D arrays
+sq = result.squeeze()
+r, g = sq.r, sq.rdf    # 1-D numpy arrays
+
+# Run MCT directly from the solver result (no config needed)
+f = run_mct(result, method="picard", n_iterations=15)
+```
+
+### From the command line
+
 ```bash
 # Solve the OZ equation for a hard-sphere system
 liquidie solve --config examples/hard_sphere_1species.toml --output-dir results/

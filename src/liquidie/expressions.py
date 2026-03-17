@@ -43,6 +43,17 @@ KNOWN_POTENTIALS: dict[str, str] = {
 CLOSURE_SYMBOLS = {"r", "gamma_r", "phi", "inv_t"}
 POTENTIAL_SYMBOLS = {"r", "sigma", "epsilon"}
 
+
+def list_potentials() -> list[str]:
+    """Return the names of all built-in potential presets."""
+    return list(KNOWN_POTENTIALS)
+
+
+def list_closures() -> list[str]:
+    """Return the names of all built-in closure presets."""
+    return list(KNOWN_CLOSURES)
+
+
 # ---------------------------------------------------------------------------
 # Core builder
 # ---------------------------------------------------------------------------

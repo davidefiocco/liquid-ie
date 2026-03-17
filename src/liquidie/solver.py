@@ -44,10 +44,17 @@ class SolverResult:
     h_k: NDArray[np.floating]
     s_k: NDArray[np.floating]
     n_species: int
+    density: NDArray[np.floating] | None = None
+    temperature: float | None = None
 
     @classmethod
     def from_directory(cls, path: Path, n_species: int) -> "SolverResult":
-        """Reconstruct a SolverResult from ``.dat`` files written by :func:`write_results`."""
+        """Reconstruct a SolverResult from ``.dat`` files written by :func:`write_results`.
+
+        Derived fields ``c_r`` and ``gamma_k`` are recomputed from the
+        loaded data using the OZ decomposition identities
+        ``c(r) = g(r) - gamma(r) - 1`` and ``gamma(k) = h(k) - c(k)``.
+        """
         gamma_data = np.loadtxt(path / "gamma.dat")
         r = gamma_data[:, 0]
         n_pts_r = len(r)
@@ -80,17 +87,47 @@ class SolverResult:
                 rdf[:, i, j] = rdf_data[:, 1]
                 rdf[:, j, i] = rdf_data[:, 1]
 
+        c_r = rdf - gamma_r - 1.0
+        gamma_k = h_k - c_k
+
         return cls(
             r=r,
             k=k,
             gamma_r=gamma_r,
-            gamma_k=np.zeros((n_pts, n_species, n_species)),
-            c_r=np.zeros_like(gamma_r),
+            gamma_k=gamma_k,
+            c_r=c_r,
             c_k=c_k,
             rdf=rdf,
             h_k=h_k,
             s_k=s_k,
             n_species=n_species,
+        )
+
+    def squeeze(self) -> "SolverResult":
+        """Return a copy with correlation arrays squeezed to 1-D.
+
+        Only valid for single-component systems (``n_species == 1``).
+
+        Raises
+        ------
+        ValueError
+            If ``n_species > 1``.
+        """
+        if self.n_species != 1:
+            raise ValueError(f"squeeze() requires n_species == 1, got {self.n_species}")
+        return SolverResult(
+            r=self.r,
+            k=self.k,
+            gamma_r=self.gamma_r[:, 0, 0],
+            gamma_k=self.gamma_k[:, 0, 0],
+            c_r=self.c_r[:, 0, 0],
+            c_k=self.c_k[:, 0, 0],
+            rdf=self.rdf[:, 0, 0],
+            h_k=self.h_k[:, 0, 0],
+            s_k=self.s_k[:, 0, 0],
+            n_species=1,
+            density=self.density,
+            temperature=self.temperature,
         )
 
 
@@ -250,6 +287,8 @@ def solve(
         h_k=h_k,
         s_k=s_k,
         n_species=n_species,
+        density=rho_vec,
+        temperature=config.system.temperature,
     )
 
 

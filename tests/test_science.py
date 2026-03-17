@@ -716,7 +716,7 @@ class TestMCTHardSphere:
             solver={"closure": "PY", "tolerance": 1e-8},
         )
         result = solve(config)
-        f = run_mct(config, result, method="picard", n_iterations=n_iterations)
+        f = run_mct(result, config=config, method="picard", n_iterations=n_iterations)
         return result, f
 
     @pytest.fixture(scope="class")
@@ -898,7 +898,7 @@ class TestMCTBinaryHS:
             solver={"closure": "PY", "tolerance": 1e-8},
         )
         result = solve(config)
-        f = run_mct(config, result, method="picard", n_iterations=15)
+        f = run_mct(result, config=config, method="picard", n_iterations=15)
         return f
 
     @pytest.mark.slow
@@ -1337,7 +1337,7 @@ class TestMCTNewtonKrylov:
             solver={"closure": "PY", "tolerance": 1e-8},
         )
         result = solve(config)
-        f = run_mct(config, result, method="newton_krylov", tolerance=1e-4)
+        f = run_mct(result, config=config, method="newton_krylov", tolerance=1e-4)
         return f
 
     def test_ergodic_f_vanishes(self, ergodic_nk):
@@ -1363,7 +1363,7 @@ class TestMCTNewtonKrylov:
             solver={"closure": "PY", "tolerance": 1e-8},
         )
         result = solve(config)
-        f_picard = run_mct(config, result, method="picard", n_iterations=15)
+        f_picard = run_mct(result, config=config, method="picard", n_iterations=15)
         np.testing.assert_allclose(
             ergodic_nk[:, 0, 0],
             f_picard[:, 0, 0],
@@ -1406,10 +1406,10 @@ class TestMCTMasses:
     def ergodic_pair(self):
         """F(q) at eta=0.40 with unit and non-unit masses."""
         result, config = self._solve_hs(0.40)
-        f_unit = run_mct(config, result, method="picard", n_iterations=15)
+        f_unit = run_mct(result, config=config, method="picard", n_iterations=15)
         f_heavy = run_mct(
-            config,
             result,
+            config=config,
             method="picard",
             n_iterations=15,
             masses=np.array([5.0]),
@@ -1420,10 +1420,10 @@ class TestMCTMasses:
     def glass_pair(self):
         """F(q) at eta=0.53 with unit and non-unit masses."""
         result, config = self._solve_hs(0.53)
-        f_unit = run_mct(config, result, method="picard", n_iterations=15)
+        f_unit = run_mct(result, config=config, method="picard", n_iterations=15)
         f_heavy = run_mct(
-            config,
             result,
+            config=config,
             method="picard",
             n_iterations=15,
             masses=np.array([3.0]),
@@ -1446,10 +1446,10 @@ class TestMCTMasses:
             solver={"closure": "PY", "tolerance": 1e-8},
         )
         result = solve(config)
-        f_unit = run_mct(config, result, method="picard", n_iterations=15)
+        f_unit = run_mct(result, config=config, method="picard", n_iterations=15)
         f_asym = run_mct(
-            config,
             result,
+            config=config,
             method="picard",
             n_iterations=15,
             masses=np.array([2.0, 0.5]),

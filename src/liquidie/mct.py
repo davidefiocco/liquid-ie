@@ -24,9 +24,9 @@ logger = logging.getLogger("liquidie")
 
 
 def run_mct(
-    config: Config,
     result: SolverResult,
     *,
+    config: Config | None = None,
     masses: NDArray[np.floating] | None = None,
     method: Literal["picard", "newton_krylov"] = "picard",
     n_iterations: int = 3,
@@ -37,10 +37,13 @@ def run_mct(
 
     Parameters
     ----------
-    config
-        Validated configuration.
     result
-        Output from the OZ solver.
+        Output from the OZ solver.  Must carry ``density`` and
+        ``temperature`` metadata (automatically set by :func:`solve`)
+        unless *config* is provided.
+    config
+        Optional override.  When given, density and temperature are
+        read from the config instead of from *result*.
     masses
         Per-species masses, shape ``(n_species,)``.
         Defaults to all ones.
@@ -61,14 +64,25 @@ def run_mct(
     F : array, shape ``(n_pts, n_species, n_species)``
         Non-ergodicity parameter.
     """
-    if config.system.n_species is None:
-        raise ValueError("n_species must be set (provide at least one density)")
-    n_species = config.system.n_species
+    if config is not None:
+        if config.system.n_species is None:
+            raise ValueError("n_species must be set (provide at least one density)")
+        rho_vec = np.array(config.system.density)
+        temperature = config.system.temperature
+    else:
+        if result.density is None or result.temperature is None:
+            raise ValueError(
+                "SolverResult must carry density and temperature metadata. "
+                "Either pass config=... or use a result produced by solve()."
+            )
+        rho_vec = np.asarray(result.density)
+        temperature = result.temperature
+
+    n_species = result.n_species
     n_pts = len(result.k)
     dk = result.k[1] - result.k[0]
 
-    inv_t = 1.0 / config.system.temperature
-    rho_vec = np.array(config.system.density)
+    inv_t = 1.0 / temperature
     x = rho_vec / rho_vec.sum()
     n_total = rho_vec.sum()
 

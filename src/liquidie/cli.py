@@ -122,7 +122,7 @@ def mct(
 
     result = SolverResult.from_directory(in_dir, n_species)
 
-    f = run_mct(cfg, result, n_iterations=n_iterations, strict=strict)
+    f = run_mct(result, config=cfg, n_iterations=n_iterations, strict=strict)
     write_mct_results(f, result.k, n_species, out)
     typer.echo(f"MCT results written to {out}/")
 
