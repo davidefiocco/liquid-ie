@@ -692,7 +692,7 @@ class TestMCTHardSphere:
     The MCT critical packing fraction with PY input is eta_c ~ 0.516.
     Below: F(q) -> 0 (ergodic liquid). Above: F(q) > 0 (ideal glass).
 
-    Uses a coarse 200-point grid (dr=0.05, r_max=10) to keep the Numba
+    Uses a 512-point grid (dr=0.02, r_max=10.24) to keep the Numba
     MCT kernel tractable (O(n_pts^3) per Picard step).
 
     References
@@ -703,11 +703,13 @@ class TestMCTHardSphere:
     """
 
     @staticmethod
-    def _solve_and_mct(eta: float, n_iterations: int = 15) -> tuple:
+    def _solve_and_mct(eta: float, n_iterations: int = 2000) -> tuple:
         rho = 6 * eta / math.pi
         config = Config(
             system={"temperature": 1.0, "density": [rho]},
-            grid={"dr": 0.05, "r_max": 10.0},
+            # dr must resolve the core well enough to put eta_c near 0.516;
+            # at dr=0.05 the structure is still too soft and eta_c is ~0.525.
+            grid={"dr": 0.02, "r_max": 10.24},
             potential={
                 "expression": "hard_sphere",
                 "epsilon": [1.0],
@@ -726,6 +728,31 @@ class TestMCTHardSphere:
     @pytest.fixture(scope="class")
     def glass(self):
         return self._solve_and_mct(0.53)
+
+    @pytest.fixture(scope="class")
+    def just_below(self):
+        return self._solve_and_mct(0.512, n_iterations=5000)
+
+    @pytest.fixture(scope="class")
+    def just_above(self):
+        return self._solve_and_mct(0.521, n_iterations=5000)
+
+    def test_eta_c_bracket(self, just_below, just_above):
+        """The full OZ -> MCT pipeline puts eta_c between 0.512 and 0.521.
+
+        The literature value with exact PY input is 0.5159. Landing near it
+        needs both the second-order hard-core node in the OZ solve and the
+        trapezoidal MCT kernel; either fix alone shifts eta_c by about 0.01.
+        """
+        _, f_below = just_below
+        result_above, f_above = just_above
+        assert np.max(np.abs(f_below[:, 0, 0])) < 1e-6
+        assert np.max(f_above[1:, 0, 0] / result_above.s_k[1:, 0, 0]) > 0.5
+
+    def test_glass_f_zero_q(self, glass):
+        """F(q -> 0) is finite in a one-component glass, with 0 < F(0) <= S(0)."""
+        result, f = glass
+        assert 0.0 < f[0, 0, 0] <= result.s_k[0, 0, 0]
 
     def test_ergodic_f_vanishes(self, ergodic):
         """Below eta_c, F(q) should decay to zero (ergodic liquid)."""
@@ -1493,6 +1520,18 @@ class TestMCTMasses:
 # ---------------------------------------------------------------------------
 
 
+def _h_across_core(r, h, sigma):
+    """h(r) for the trapezoidal rule across a hard core on a grid node.
+
+    h jumps from -1 to h(sigma+) at r = sigma, and the reported value there is
+    h(sigma+); the trapezoidal rule for a step needs the mean of both sides.
+    """
+    h = h.copy()
+    node = np.isclose(r, sigma)
+    h[node] = 0.5 * (h[node] - 1.0)
+    return h
+
+
 class TestRealSpaceSumRule:
     """Cross-check S(0) from real-space integration against Fourier-space.
 
@@ -1507,7 +1546,7 @@ class TestRealSpaceSumRule:
         result = cached_solve(eta)
         rho = 6 * eta / math.pi
         r = result.r
-        h_r = result.rdf[:, 0, 0] - 1.0
+        h_r = _h_across_core(r, result.rdf[:, 0, 0] - 1.0, 1.0)
 
         s0_real = 1.0 + rho * 4.0 * np.pi * trapezoid(r**2 * h_r, r)
         s0_fourier = result.s_k[0, 0, 0]
@@ -1543,10 +1582,11 @@ class TestRealSpaceSumRule:
         result = solve(config)
         r = result.r
         x = np.array([rho_1, rho_2]) / rho_total
+        sigma = np.array([[1.0, 0.8], [0.8, 0.6]])
 
         for i in range(2):
             for j in range(2):
-                h_ij = result.rdf[:, i, j] - 1.0
+                h_ij = _h_across_core(r, result.rdf[:, i, j] - 1.0, sigma[i, j])
                 s0_real = x[i] * (1.0 if i == j else 0.0) + x[i] * x[
                     j
                 ] * rho_total * 4.0 * np.pi * trapezoid(r**2 * h_ij, r)

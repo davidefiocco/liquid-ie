@@ -206,6 +206,22 @@ class TestFromDirectory:
                     err_msg=f"c_r[{i},{j}] mismatch",
                 )
 
+    def test_metadata_roundtrip_and_inferred_n_species(self, binary_result, tmp_path):
+        write_results(binary_result, tmp_path)
+        loaded = SolverResult.from_directory(tmp_path)
+        assert loaded.n_species == 2
+        assert loaded.temperature == binary_result.temperature
+        np.testing.assert_allclose(loaded.density, binary_result.density)
+
+    def test_legacy_directory_without_metadata(self, single_result, tmp_path):
+        write_results(single_result, tmp_path)
+        (tmp_path / "metadata.json").unlink()
+        loaded = SolverResult.from_directory(tmp_path, 1)
+        assert loaded.density is None
+        assert loaded.temperature is None
+        with pytest.raises(ValueError, match="metadata.json"):
+            SolverResult.from_directory(tmp_path)
+
 
 # ---------------------------------------------------------------------------
 # run_mct with SolverResult-only call

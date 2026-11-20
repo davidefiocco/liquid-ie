@@ -5,8 +5,9 @@
 # the structured-liquid regime: g(r) has a clear first peak near
 # r = sigma with height ~ 2.35 (exact PY contact value).
 #
-# The PY closure is exact for the hard-sphere direct correlation
-# function c(r), which vanishes identically for r > sigma.
+# In the PY approximation for hard spheres, the direct correlation function
+# c(r) vanishes identically for r > sigma, and Wertheim & Thiele derived
+# its exact analytical solution.
 #
 # References:
 #   Wertheim, Phys. Rev. Lett. 10, 321 (1963)

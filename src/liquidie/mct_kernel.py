@@ -50,15 +50,24 @@ def get_m(
     Returns
     -------
     M : array, shape ``(n_pts, n_species, n_species)``
+
+    Notes
+    -----
+    Both the k-integral and, in bipolar coordinates, the p-integral over
+    ``[|q - k|, q + k]`` use the trapezoidal rule on the integer grid. The
+    p limits are always grid nodes, so they get half weight; the k cutoff at
+    ``n_pts - 1`` gets half weight as well.
     """
     pi = np.pi
     d = np.eye(n_species)
     M = np.zeros((n_pts, n_species, n_species))
+    k_last = n_pts - 1
 
     # q = 0 contribution (Eq. from Phys. Rev. E 55, 657)
     for i in range(n_species):
         for j in range(n_species):
-            for ki in range(n_pts):
+            for ki in range(1, n_pts):
+                w_k = 0.5 if ki == k_last else 1.0
                 for alpha in range(n_species):
                     for beta in range(n_species):
                         for alphap in range(n_species):
@@ -72,7 +81,8 @@ def get_m(
                                     - d[j, alphap] * c[ki, j, betap]
                                 )
                                 M[0, i, j] += (
-                                    ki**4
+                                    w_k
+                                    * ki**4
                                     * v_i
                                     * v_j
                                     * f[ki, alpha, alphap]
@@ -85,15 +95,15 @@ def get_m(
     # q != 0 contributions (parallel over q)
     for q in prange(1, n_pts):
         q2 = float(q * q)
-        for ki in range(n_pts):
+        for ki in range(1, n_pts):
             ki2 = float(ki * ki)
-            ext1 = q - ki
-            if q < ki:
-                ext1 = -ext1
-            ext2 = q + ki + 1
-            if ext2 > n_pts:
-                ext2 = n_pts
-            for p in range(ext1, ext2):
+            w_k = 0.5 if ki == k_last else 1.0
+            p_lo = abs(q - ki)
+            p_hi = min(q + ki, k_last)
+            if p_hi <= p_lo:
+                continue
+            for p in range(p_lo, p_hi + 1):
+                w = w_k * (0.5 if p == p_lo or p == p_hi else 1.0)
                 p2 = float(p * p)
                 fac1 = q2 - p2 + ki2
                 fac2 = q2 + p2 - ki2
@@ -112,7 +122,8 @@ def get_m(
                                             + fac2 * d[j, alphap] * c[p, j, betap]
                                         )
                                         M[q, i, j] += (
-                                            ki
+                                            w
+                                            * ki
                                             * p
                                             * v_i
                                             * v_j
