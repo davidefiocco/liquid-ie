@@ -1,6 +1,6 @@
 """LiquidIE: Ornstein-Zernike integral equation solver and mode-coupling theory."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "Config",

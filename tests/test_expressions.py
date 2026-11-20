@@ -11,6 +11,7 @@ from liquidie.expressions import (
     build_closure,
     build_expression,
     build_potential,
+    find_potential_jumps,
     generate_potential_grid,
 )
 
@@ -107,8 +108,12 @@ class TestClosures:
 
     def test_bpgg_without_param_raises(self):
         """BPGG without setting s raises a clear error."""
-        with pytest.raises(ValueError, match="unknown symbol"):
+        with pytest.raises(ValueError, match="closure_params"):
             build_closure("BPGG")
+
+    def test_closure_case_typo_suggests_preset(self):
+        with pytest.raises(ValueError, match="did you mean preset 'PY'"):
+            build_closure("py")
 
     def test_apply_closure_vec(self):
         """apply_closure_vec produces correct shape and values."""
@@ -152,6 +157,30 @@ class TestPotentials:
         result = fn(1.0, r, 1.0)
         np.testing.assert_allclose(result, 1.0 / r**12)
 
+    def test_inverse_power_law(self):
+        fn = build_potential("inverse_power_law", params={"n": 6.0})
+        r = np.array([1.0, 2.0])
+        np.testing.assert_allclose(fn(2.0, r, 1.5), 2.0 * (1.5 / r) ** 6)
+
+    def test_inverse_power_law_without_param_raises(self):
+        with pytest.raises(ValueError, match="potential_params"):
+            build_potential("inverse_power_law")
+
+    def test_gaussian_core(self):
+        fn = build_potential("gaussian_core")
+        r = np.array([0.0, 1.0, 2.0])
+        np.testing.assert_allclose(fn(2.0, r, 1.5), 2.0 * np.exp(-((r / 1.5) ** 2)))
+
+    def test_off_grid_jump_logs_warning(self, caplog):
+        fn = build_potential("hard_sphere")
+        r = np.arange(0.0, 5.0, 0.05)
+        with caplog.at_level("WARNING", logger="liquidie"):
+            jumps = find_potential_jumps(
+                "hard_sphere", fn, r, [1.02], [1.0], 1, inv_t=1.0
+            )
+        assert jumps.is_empty
+        assert "falls between grid nodes" in caplog.text
+
     def test_generate_potential_grid(self):
         fn = build_potential("hard_sphere")
         r = np.linspace(0.1, 3.0, 50)
@@ -159,3 +188,26 @@ class TestPotentials:
         assert phi.shape == (50, 1, 1)
         assert phi[0, 0, 0] == HARD_CORE_HEIGHT  # r=0.1 < sigma=1.0
         assert phi[-1, 0, 0] == 0.0  # r=3.0 >= sigma=1.0
+
+    def test_find_potential_jumps_hard_sphere(self):
+        fn = build_potential("hard_sphere")
+        r = np.arange(0.0, 5.0, 0.05)
+        jumps = find_potential_jumps("hard_sphere", fn, r, [1.0], [1.0], 1, inv_t=1.0)
+        assert list(jumps.idx) == [20]
+        assert jumps.phi_inner[0] == HARD_CORE_HEIGHT
+        assert jumps.phi_outer[0] == 0.0
+
+    def test_find_potential_jumps_square_well(self):
+        spec = "Piecewise((1e30, r < sigma), (-epsilon, r < 1.5 * sigma), (0, True))"
+        fn = build_potential(spec)
+        r = np.arange(0.0, 5.0, 0.05)
+        jumps = find_potential_jumps(spec, fn, r, [1.0], [1.0], 1, inv_t=1.0)
+        assert sorted(jumps.idx.tolist()) == [20, 30]
+
+    def test_find_potential_jumps_smooth_is_empty(self):
+        fn = build_potential("lennard_jones")
+        r = np.arange(0.0, 5.0, 0.05)
+        jumps = find_potential_jumps(
+            "lennard_jones", fn, r, [1.0], [1.0], 1, inv_t=100.0
+        )
+        assert jumps.is_empty
